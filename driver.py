@@ -8,6 +8,7 @@ from sklearn.svm import SVC
 
 words = defaultdict(DataFrame)
 
+os.chdir('data/')
 for d in os.listdir(os.curdir):
     if d.startswith('tctodd'):
         for f in os.listdir(d):
