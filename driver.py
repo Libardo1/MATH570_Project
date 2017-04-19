@@ -8,6 +8,7 @@ from sklearn.svm import SVC
 
 words = defaultdict(DataFrame)
 
+# This isn't working correctly. Have to change how files are read
 os.chdir('data/')
 for d in os.listdir(os.curdir):
     if d.startswith('tctodd'):
@@ -18,9 +19,14 @@ for d in os.listdir(os.curdir):
             with open(f, 'r') as fp:
                 temp = read_csv(f, delimiter='\t', header=None)
                 words[word] = words[word].append(temp)
+os.chdir('../')
 
-print len(words['give'])
-print words['give']
+training = defaultdict(DataFrame)
+testing = defaultdict(DataFrame)
 
-print len(words.keys())
-#for key in words.keys():
+# Divide data in 75 - 25 training - testing
+for key in words.keys():
+    print int(len(words[key]) * 0.75)
+    training[key] = words[key].head(int(len(words[key]) * 0.75))
+    testing[key]  = words[key].tail(int(len(words[key]) * 0.25))
+
