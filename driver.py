@@ -3,8 +3,12 @@ import os
 import sys
 
 from collections import defaultdict, namedtuple
-from pandas import read_csv, DataFrame
+from pandas import read_csv, DataFrame, Series
+from sklearn.decomposition import PCA
+from sklearn.multiclass import OneVsRestClassifier, OneVsOneClassifier
 from sklearn.svm import SVC
+
+import matplotlib.pyplot as plt
 
 class SVM(object):
     def __init__(self, _class_='', _time=-1, _clf=SVC()):
@@ -26,6 +30,8 @@ testing = defaultdict(DataFrame)
 # This isn't working correctly. Have to change how files are read
 print "\nReading in Data ....\n"
 os.chdir('data/')
+total_data = DataFrame([])
+total_labs = []
 for d in os.listdir(os.curdir):
     if d.startswith('tctodd'):
         for f in os.listdir(d):
@@ -35,11 +41,38 @@ for d in os.listdir(os.curdir):
             f = os.getcwd() + '/' + d + '/' + f
             with open(f, 'r') as fp:
                 temp = read_csv(f, delimiter='\t', header=None)
-                if num == 3:
-                    testing[word] = temp
+                temp.replace([np.nan, np.inf], 0) 
+                if not np.isfinite(np.array(temp).sum()) and not np.isfinite(np.array(temp)).all():
+                    pass
                 else:
-                    training[word].append(temp)
+                    total_data = total_data.append(Series(temp.as_matrix().flatten()), ignore_index=True)
+            #total_data = total_data.append(temp, ignore_index=True)
+                    total_labs.append(word)
+                    if num == 3:
+                        testing[word] = temp
+                    else:
+                        training[word].append(temp)
 os.chdir('../')
+
+#pc_train = PCA(n_components=5)
+#pc_train.fit(total_data.as_matrix())
+
+whole_train = total_data.head(int(len(total_data) * 0.8))
+whole_test  = total_data.tail(int(len(total_data) * 0.2))
+
+train_labels = total_labs[int(len(total_data) * 0.8)]
+test_labels  = total_labs[int(len(total_data) * 0.2)]
+
+model = OneVsOneClassifier(SVC())
+
+model.fit(whole_train.as_matrix(), train_labels)
+
+preds = model.predict(whole_test)
+
+print [(x, y) for x, y in zip(preds, test_labels)]
+
+
+sys.exit()
 
 # Structuring Data
 print "\nStructuring Data ....\n"
@@ -63,9 +96,10 @@ while keys:
     test_data[time] = (ttest_data)
     time += 1
 
+# Training accuracy
 
 # Times -> Classes -> Classifiers
-SVMs = defaultdict(lambda : defaultdict(SVC))
+SVMs = defaultdict(lambda : defaultdict(OneVsRestClassifier))
 
 print "\nTraining Classifiers ....\n"
 # Training Classifiers
@@ -82,9 +116,12 @@ for tim, dat in time_data.iteritems():
         temp_cols = labels + temp_cols
         Y = [1] * len(labels) + Y
         if not all(x == Y[0] for x in Y):
-            clf = SVC(kernel='linear')
-            clf.fit(dat.data[temp_cols].T.as_matrix(), Y)
+            clf = OneVsRestClassifier(SVC(kernel='rbf'))
+            if word == 'later':
+                plt.plot(pc_train.transform(dat.data[temp_cols].T.as_matrix()), color='red')
+            clf.fit(pc_train.transform(dat.data[temp_cols].T.as_matrix()), Y)
             SVMs[tim][sign] = clf
+#    if tim > 50: break
 
 # Testing
 num_correct = 0
@@ -100,17 +137,21 @@ for word, data in testing.iteritems():
         for class_, svc in SVMs[i].iteritems():
 
             # Calculate distance from hyperplane
-            y = svc.decision_function(data.as_matrix())
-            w_norm = np.linalg.norm(svc.coef_)
-            dist = np.linalg.norm(y / w_norm) / len(data)
 
-            sums[class_] += abs(dist)
+            pc_pred = pc_train.transform(row.reshape(1,-1))
+            if word == 'later':
+                plt.plot(pc_pred, color='blue')
+            pred = svc.predict(pc_pred)
+            if pred[0] == 1:
+                y = svc.decision_function(pc_pred)
+                sums[class_] += np.linalg.norm(y)
 
     max_dist = max(sums.values())
     clf = ''
 
     for key, value in sums.iteritems():
         if max_dist == value:
+            print '\n\nreal_dist', sums[word]
             print 'max_dist', max_dist
             clf = key
             break
@@ -138,4 +179,5 @@ for time_, data_ in test_data.iteritems():
 
 print 'num correct', num_correct
 print 'num total', num_total
-print 'Total Accuracy', float(num_correct / num_total)
+print 'Total Accuracy', float(num_correct) / num_total
+plt.show()
