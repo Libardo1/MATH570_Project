@@ -1,12 +1,15 @@
 import numpy as np
+import pickle
 import os
 import sys
+import time
 
 from collections import defaultdict, namedtuple
-from pandas import read_csv, DataFrame, Series
+from pandas import read_csv, DataFrame, Series, concat
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.decomposition import PCA
 from sklearn.multiclass import OneVsRestClassifier, OneVsOneClassifier
-from sklearn.svm import SVC
+from sklearn.svm import SVC, LinearSVC
 
 import matplotlib.pyplot as plt
 
@@ -24,6 +27,7 @@ class Data(object):
     def addData(self, label, _data=np.array([])):
         self.data[label] = _data[0]
 
+t0 = time.time()
 training = defaultdict(list)
 testing = defaultdict(DataFrame)
 
@@ -41,36 +45,59 @@ for d in os.listdir(os.curdir):
             f = os.getcwd() + '/' + d + '/' + f
             with open(f, 'r') as fp:
                 temp = read_csv(f, delimiter='\t', header=None)
-                temp.replace([np.nan, np.inf], 0) 
-                if not np.isfinite(np.array(temp).sum()) and not np.isfinite(np.array(temp)).all():
-                    pass
+                temp.replace([None, np.nan, np.inf], 0) 
+
+                if len(temp) > 100:
+                    temp = Series(temp.head(100).as_matrix().flatten())
                 else:
-                    total_data = total_data.append(Series(temp.as_matrix().flatten()), ignore_index=True)
-            #total_data = total_data.append(temp, ignore_index=True)
-                    total_labs.append(word)
-                    if num == 3:
-                        testing[word] = temp
-                    else:
-                        training[word].append(temp)
+                    zeroes = DataFrame(np.zeros((100 - len(temp), 22)))
+                    temp = Series(concat([temp, zeroes]).as_matrix().flatten())
+                    #temp = temp.append(zeroes, ignore_index=True).as_matrix().flatten()
+                    # Fill up to 100 values
+
+                total_data = total_data.append(temp, ignore_index=True)
+                #total_data = total_data.append(temp, ignore_index=True)
+                total_labs.append(word)
+                if num == 3:
+                    testing[word] = temp
+                else:
+                    training[word].append(temp)
 os.chdir('../')
 
+filename = 'RF_onevone_model.sav'
 #pc_train = PCA(n_components=5)
 #pc_train.fit(total_data.as_matrix())
 
 whole_train = total_data.head(int(len(total_data) * 0.8))
 whole_test  = total_data.tail(int(len(total_data) * 0.2))
 
-train_labels = total_labs[int(len(total_data) * 0.8)]
-test_labels  = total_labs[int(len(total_data) * 0.2)]
+train_labels = total_labs[:int(len(total_data) * 0.8)]
+test_labels  = total_labs[int(len(total_data) * 0.2):]
 
-model = OneVsOneClassifier(SVC())
+print '\nTraining ....\n'
 
+#'''
+model = OneVsOneClassifier(RandomForestClassifier())
+
+#model.fit(pc_train.transform(whole_train.as_matrix()), train_labels)
 model.fit(whole_train.as_matrix(), train_labels)
 
+pickle.dump(model, open(filename, 'wb'))
+sys.exit()
+#'''
+
+model = pickle.load(open(filename, 'rb'))
+
+#preds = model.predict(pc_train.transform(whole_test))
 preds = model.predict(whole_test)
 
-print [(x, y) for x, y in zip(preds, test_labels)]
+results = [x == y for x, y in zip(preds, test_labels)]
 
+t1 = time.time()
+
+print '\nAccuracy = ', sum(results) / float(len(results))
+
+print '\nProgram took', t1 - t0, ' seconds to complete\n'
 
 sys.exit()
 
